@@ -1,0 +1,7 @@
+' Minimal compatibility layer for local C4 diagrams.
+' Kept small so it works with common PlantUML versions.
+
+!define Person($alias, $label, $descr="") actor "$label" as $alias
+!define System($alias, $label, $descr="") rectangle "$label" as $alias
+!define System_Ext($alias, $label, $descr="") rectangle "$label" as $alias
+!define Rel($from, $to, $label="") $from --> $to : $label
