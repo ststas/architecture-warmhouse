@@ -3,7 +3,8 @@ title «Тёплый дом» As-Is Context Diagram
 
 top to bottom direction
 
-!include ../C4_Component.puml
+!define RELATIVE_INCLUDE .
+!include ../C4_Context.puml
 
 Person(user, "Пользователь", "Управляет отоплением и просматривает текущую температуру")
 Person(specialist, "Специалист компании", "Подключает и настраивает оборудование при установке")

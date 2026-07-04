@@ -1,0 +1,109 @@
+@startuml
+title Warmhouse To-Be Container Diagram
+
+left to right direction
+
+!define RELATIVE_INCLUDE .
+!include ../../C4_Container.puml
+
+!define ASIS_COLOR #FFF2CC
+!define TOBE_COLOR #D5E8D4
+!define INFRA_COLOR #DAE8FC
+!define DATA_COLOR #E1D5E7
+
+AddContainerTag("asis", $bgColor=ASIS_COLOR, $fontColor="#000000", $borderColor="#C9B458", $legendText="Migrate from monolith")
+AddContainerTag("tobe", $bgColor=TOBE_COLOR, $fontColor="#000000", $borderColor="#82B366", $legendText="New features")
+AddContainerTag("infra", $bgColor=INFRA_COLOR, $fontColor="#000000", $borderColor="#6C8EBF", $legendText="Infrastructure")
+AddContainerTag("data", $bgColor=DATA_COLOR, $fontColor="#000000", $borderColor="#9673A6", $legendText="Data store")
+
+Person(user, "Пользователь", "Владелец умного дома")
+Person(support, "Специалист поддержки", "Помогает с подключением и эксплуатацией")
+
+System_Ext(partnerDevices, "Устройства партнёров", "Датчики, реле, камеры, ворота")
+System_Ext(notificationProvider, "Провайдер уведомлений", "Email, SMS, push")
+
+Container_Boundary(warmhouse, "SaaS-экосистема «Тёплый дом»") {
+  Container(webApp, "Web UI", "Web", "Самообслуживание, управление домом, сценарии", "", "infra")
+  Container(apiGateway, "API Gateway", "HTTP API", "Единая точка входа для клиентов", "", "infra")
+
+  together {
+    Container_Boundary(servicesLayer, "Доменные сервисы") {
+      Container(userHouseService, "User/House Service", "Go", "Пользователи, дома, права доступа", "", "asis")
+      Container(deviceService, "Device Service", "Go", "Учёт устройств, регистрация, привязка к дому (вырос из учёта отопительных модулей монолита).", "", "tobe")
+      Container(telemetryService, "Telemetry Service", "Go", "Приём, хранение и выдача показаний", "", "asis")
+      Container(heatingService, "Heating Service", "Go", "Команды и состояние отопления", "", "asis")
+      Container(lightingService, "Lighting Service", "Go", "Команды и состояние освещения", "", "tobe")
+      Container(gateService, "Gate Service", "Go", "Команды и состояние ворот", "", "tobe")
+      Container(videoService, "Video Surveillance Service", "Go", "Удалённое наблюдение и доступ к камерам", "", "tobe")
+      Container(scenarioService, "Scenario Service", "Go", "Сценарии автоматизации и правила", "", "tobe")
+      
+    }
+    Container_Boundary(platformLayer, "Инфраструктура платформы") {
+      ContainerQueue(commandEventBus, "Command and Event Bus", "Events", "Команды, события устройств, телеметрия", "", "infra")
+      Container_Boundary(platformAndIntegrationServices, "Платформенные и интеграционные сервисы") {
+        Container(deviceGateway, "Device Gateway / Partner Integration", "MQTT/HTTP", "Интеграция устройств партнёров", "", "tobe")
+        Container(notificationService, "Notification Service", "Go", "Настройки, шаблоны и отправка уведомлений", "", "tobe")
+      }
+      Container_Boundary(dataLayer, "Хранилища данных") {
+        ContainerDb(userHouseDb, "User/House DB", "PostgreSQL", "User/House Service: пользователи, дома, доступы", "", "data")
+        ContainerDb(deviceDb, "Device DB", "PostgreSQL", "Device Service: каталог устройств, регистрация и привязка", "", "data")
+        ContainerDb(telemetryDb, "Telemetry Storage", "Time-series DB", "Telemetry Service: показания, состояния и история", "", "data")
+        ContainerDb(heatingDb, "Heating DB", "PostgreSQL", "Heating Service: состояние и команды отопления", "", "data")
+        ContainerDb(lightingDb, "Lighting DB", "PostgreSQL", "Lighting Service: состояние и команды освещения", "", "data")
+        ContainerDb(gateDb, "Gate DB", "PostgreSQL", "Gate Service: состояние и команды ворот", "", "data")
+        ContainerDb(videoDb, "Video Metadata DB", "PostgreSQL", "Video Surveillance Service: события камер и метаданные", "", "data")
+        ContainerDb(automationDb, "Automation DB", "PostgreSQL", "Scenario Service: сценарии и правила", "", "data")
+        ContainerDb(notificationDb, "Notification DB", "PostgreSQL", "Notification Service: шаблоны, настройки и история", "", "data")
+      }
+    }
+  }
+}
+
+Rel(user, webApp, "Использует")
+Rel(support, webApp, "Поддерживает пользователей")
+Rel(webApp, apiGateway, "HTTP")
+Rel(apiGateway, servicesLayer, "Пользовательские операции")
+Rel(apiGateway, notificationService, "Настройка уведомлений")
+Rel(servicesLayer, commandEventBus, "Обмен командами и событиями")
+Rel(userHouseService, userHouseDb, "Читает и пишет")
+Rel(deviceService, deviceDb, "Читает и пишет")
+Rel(telemetryService, telemetryDb, "Читает и пишет")
+Rel(heatingService, heatingDb, "Читает и пишет")
+Rel(lightingService, lightingDb, "Читает и пишет")
+Rel(gateService, gateDb, "Читает и пишет")
+Rel(videoService, videoDb, "Читает и пишет")
+Rel(scenarioService, automationDb, "Читает и пишет")
+Rel(notificationService, notificationDb, "Читает и пишет")
+Rel(commandEventBus, deviceGateway, "Доставляет команды устройствам")
+Rel(deviceGateway, commandEventBus, "Публикует состояния и телеметрию")
+Rel(commandEventBus, notificationService, "Доставляет события для уведомлений")
+Rel(notificationService, notificationProvider, "Отправляет email, SMS и push")
+Rel(deviceGateway, partnerDevices, "Стандартные протоколы")
+
+servicesLayer -[hidden]left-> platformLayer
+commandEventBus -[hidden]right-> platformAndIntegrationServices
+deviceGateway -[hidden]right-> notificationService
+
+userHouseService -[hidden]down-> deviceService
+deviceService -[hidden]down-> telemetryService
+telemetryService -[hidden]down-> heatingService
+heatingService -[hidden]down-> lightingService
+lightingService -[hidden]down-> gateService
+gateService -[hidden]down-> videoService
+videoService -[hidden]down-> scenarioService
+
+notificationDb -[hidden]down-> userHouseDb
+userHouseDb -[hidden]down-> deviceDb
+deviceDb -[hidden]down-> telemetryDb
+telemetryDb -[hidden]down-> heatingDb
+heatingDb -[hidden]down-> lightingDb
+lightingDb -[hidden]down-> gateDb
+gateDb -[hidden]down-> videoDb
+videoDb -[hidden]down-> automationDb
+
+warmhouse -[hidden]left-> partnerDevices
+warmhouse -[hidden]left-> notificationProvider
+
+SHOW_LEGEND()
+
+@enduml
