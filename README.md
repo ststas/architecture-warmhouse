@@ -162,62 +162,57 @@ ER-диаграмма описывает логическую модель да�
 
 | Канал                  | Событие                            | Публикует                             | Потребляет                          |
 | ---------------------- | ---------------------------------- | ------------------------------------- | ----------------------------------- |
-| `telemetry.measured`   | Новое измерение телеметрии         | Device Gateway                        | Telemetry, Scenario, Notification   |
-| `device.command`       | Команда устройству                 | Heating/Lighting/Gate, Device Service | Device Gateway                      |
-| `device.state.changed` | Подтверждённое изменение состояния | Device Gateway                        | Telemetry, Device, доменные сервисы |
+| `telemetryMeasured`    | Новое измерение телеметрии         | Device Gateway                        | Telemetry, Scenario, Notification   |
+| `deviceCommand`        | Команда устройству                 | Heating/Lighting/Gate, Device Service | Device Gateway                      |
+| `deviceStateChanged`   | Подтверждённое изменение состояния | Device Gateway                        | Telemetry, Device, доменные сервисы |
 
 Для каждого сообщения описаны JSON-схема payload и пример. Просмотреть можно в [AsyncAPI Studio](https://studio.asyncapi.com/).
 
 # Задание 5. Работа с docker и docker-compose
 
-Перейдите в apps.
+Всё решение находится в каталоге [apps](apps).
 
-Там находится приложение-монолит для работы с датчиками температуры. В README.md описано как запустить решение.
+### 1. Приложение temperature-api
 
-Вам нужно:
+Сервис имитирует удалённый датчик и при запросе отдаёт случайное значение температуры. Реализован на Node.js (Express).
 
-1. сделать простое приложение temperature-api на любом удобном для вас языке программирования, которое при запросе /temperature?location= будет отдавать рандомное значение температуры.
+Исходный код: [apps/temperature-api](apps/temperature-api) ([index.js](apps/temperature-api/index.js)).
 
-Locations - название комнаты, sensorId - идентификатор названия комнаты
+**Эндпоинты:**
+
+| Метод | Путь                      | Описание                                        | Ответ        |
+| ----- | ------------------------- | ----------------------------------------------- | ------------ |
+| `GET` | `/temperature?location=`  | Случайная температура по названию комнаты       | `200`, `400` |
+| `GET` | `/temperature/{sensorId}` | Случайная температура по идентификатору датчика | `200`        |
+| `GET` | `/health`                 | Проверка живости сервиса                        | `200`        |
+
+Эндпоинт `/temperature/{sensorId}` вызывает приложение-монолит `smart_home` (клиент `TemperatureService`), поэтому формат ответа совпадает с ожидаемой Go-структурой `TemperatureResponse` (`value`, `unit`, `timestamp`, `location`, `status`, `sensor_id`, `sensor_type`, `description`). При каждом запросе поле `value` — новое случайное значение.
+
+Поддерживается двусторонний маппинг комнаты и идентификатора датчика: `1 ↔ Living Room`, `2 ↔ Bedroom`, `3 ↔ Kitchen` (иначе `0`/`Unknown`).
+
+Пример:
 
 ```
-	// If no location is provided, use a default based on sensor ID
-	if location == "" {
-		switch sensorID {
-		case "1":
-			location = "Living Room"
-		case "2":
-			location = "Bedroom"
-		case "3":
-			location = "Kitchen"
-		default:
-			location = "Unknown"
-		}
-	}
-
-	// If no sensor ID is provided, generate one based on location
-	if sensorID == "" {
-		switch location {
-		case "Living Room":
-			sensorID = "1"
-		case "Bedroom":
-			sensorID = "2"
-		case "Kitchen":
-			sensorID = "3"
-		default:
-			sensorID = "0"
-		}
-	}
+GET /temperature/1
+{ "value": 3.1, "unit": "°C", "timestamp": "2026-07-05T07:15:02Z",
+  "location": "Living Room", "status": "active", "sensor_id": "1",
+  "sensor_type": "temperature", "description": "Temperature reading for Living Room" }
 ```
 
-1. Приложение следует упаковать в Docker и добавить в docker-compose. Порт по умолчанию должен быть 8081
-2. Кроме того для smart_home приложения требуется база данных - добавьте в docker-compose файл настройки для запуска postgres с указанием скрипта инициализации ./smart_home/init.sql
+### 2. Docker и docker-compose
 
-Для проверки можно использовать Postman коллекцию smarthome-api.postman_collection.json и вызвать:
+- Приложение упаковано в Docker: [apps/temperature-api/Dockerfile](apps/temperature-api/Dockerfile) (`node:20-alpine`), порт по умолчанию **8081**.
+- В [apps/docker-compose.yml](apps/docker-compose.yml) описаны три сервиса:
+  - `postgres` — база данных для `smart_home` с инициализацией из `./smart_home/init.sql` (создаёт БД и таблицы) и healthcheck;
+  - `temperature-api` — сервис-датчик на порту `8081`;
+  - `app` — приложение-монолит `smart_home` на порту `8080`, зависит от готовности БД и `temperature-api`.
 
-- Create Sensor
-- Get All Sensors
+### 3. Запуск и проверка
 
-Должно при каждом вызове отображаться разное значение температуры
+```bash
+cd apps
+docker compose up --build -d
+```
 
-Ревьюер будет проверять точно так же.
+- Прямая проверка датчика: `curl "http://localhost:8081/temperature?location=Living%20Room"`.
+- Проверка интеграции — через Postman-коллекцию `smarthome-api.postman_collection.json` (порт `8080`): вызвать **Create Sensor**, затем **Get All Sensors** (или **Get Sensor by ID**) значение температуры у датчика меняется при каждом вызове.
