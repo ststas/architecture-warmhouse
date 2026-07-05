@@ -1,0 +1,203 @@
+asyncapi: 3.1.0
+
+info:
+  title: Warmhouse Event Bus API
+  version: 1.0.0
+  description: |
+    Asynchronous interaction between Warmhouse microservices through the
+    **Command and Event Bus**. Used where the sender does not need an immediate
+    response: delivering commands to devices, and publishing new telemetry
+    measurements and confirmed state changes.
+
+    Example: on a new temperature measurement the Device Gateway publishes
+    `telemetry.measured`, and the Telemetry, Scenario, and Notification services
+    process the event independently.
+
+servers:
+  event-bus:
+    host: broker.warmhouse.example:9092
+    protocol: kafka
+    description: Command and Event Bus (Kafka)
+
+defaultContentType: application/json
+
+channels:
+  telemetryMeasured:
+    address: telemetry.measured
+    description: New telemetry measurement from a device.
+    messages:
+      TelemetryMeasured:
+        $ref: "#/components/messages/TelemetryMeasured"
+
+  deviceCommand:
+    address: device.command
+    description: A command addressed to a device.
+    messages:
+      DeviceCommand:
+        $ref: "#/components/messages/DeviceCommand"
+
+  deviceStateChanged:
+    address: device.state.changed
+    description: Confirmed device state change.
+    messages:
+      DeviceStateChanged:
+        $ref: "#/components/messages/DeviceStateChanged"
+
+operations:
+  publishTelemetryMeasured:
+    action: send
+    channel:
+      $ref: "#/channels/telemetryMeasured"
+    summary: Published by the Device Gateway when it receives readings from a device.
+    messages:
+      - $ref: "#/channels/telemetryMeasured/messages/TelemetryMeasured"
+
+  consumeTelemetryMeasured:
+    action: receive
+    channel:
+      $ref: "#/channels/telemetryMeasured"
+    summary: Consumed by Telemetry, Scenario, and Notification services.
+    messages:
+      - $ref: "#/channels/telemetryMeasured/messages/TelemetryMeasured"
+
+  publishDeviceCommand:
+    action: send
+    channel:
+      $ref: "#/channels/deviceCommand"
+    summary: Published by domain services (Heating/Lighting/Gate) and the Device Service.
+    messages:
+      - $ref: "#/channels/deviceCommand/messages/DeviceCommand"
+
+  consumeDeviceCommand:
+    action: receive
+    channel:
+      $ref: "#/channels/deviceCommand"
+    summary: The Device Gateway receives the command and executes it on the device.
+    messages:
+      - $ref: "#/channels/deviceCommand/messages/DeviceCommand"
+
+  publishDeviceStateChanged:
+    action: send
+    channel:
+      $ref: "#/channels/deviceStateChanged"
+    summary: Published by the Device Gateway after the device executes a command.
+    messages:
+      - $ref: "#/channels/deviceStateChanged/messages/DeviceStateChanged"
+
+  consumeDeviceStateChanged:
+    action: receive
+    channel:
+      $ref: "#/channels/deviceStateChanged"
+    summary: Consumed by Telemetry, Device, and domain services to update state.
+    messages:
+      - $ref: "#/channels/deviceStateChanged/messages/DeviceStateChanged"
+
+components:
+  messages:
+    TelemetryMeasured:
+      name: TelemetryMeasured
+      title: New telemetry measurement
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/TelemetryMeasured"
+      examples:
+        - name: temperature
+          payload:
+            event_id: "e0000001"
+            device_id: "6f1c2d3e"
+            metric: "temperature"
+            value: 21.4
+            unit: "C"
+            recorded_at: "2026-07-04T20:10:00Z"
+
+    DeviceCommand:
+      name: DeviceCommand
+      title: Command to a device
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/DeviceCommand"
+      examples:
+        - name: turnOn
+          payload:
+            command_id: "c0ffee00"
+            device_id: "6f1c2d3e"
+            command: "turn_on"
+            payload:
+              target_temp: 22.5
+            issued_at: "2026-07-04T20:05:00Z"
+
+    DeviceStateChanged:
+      name: DeviceStateChanged
+      title: Device state changed
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/DeviceStateChanged"
+      examples:
+        - name: online
+          payload:
+            event_id: "e0000002"
+            device_id: "6f1c2d3e"
+            status: "online"
+            changed_at: "2026-07-04T20:05:03Z"
+
+  schemas:
+    TelemetryMeasured:
+      type: object
+      required: [event_id, device_id, metric, value, recorded_at]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+          format: uuid
+        metric:
+          type: string
+          example: "temperature"
+        value:
+          type: number
+          format: double
+          example: 21.4
+        unit:
+          type: string
+          example: "C"
+        recorded_at:
+          type: string
+          format: date-time
+
+    DeviceCommand:
+      type: object
+      required: [command_id, device_id, command, issued_at]
+      properties:
+        command_id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+          format: uuid
+        command:
+          type: string
+          enum: [turn_on, turn_off, set_target_temp, open, close]
+        payload:
+          type: object
+          additionalProperties: true
+        issued_at:
+          type: string
+          format: date-time
+
+    DeviceStateChanged:
+      type: object
+      required: [event_id, device_id, status, changed_at]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [registered, online, offline, error]
+        changed_at:
+          type: string
+          format: date-time

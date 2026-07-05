@@ -1,0 +1,429 @@
+openapi: 3.0.3
+
+info:
+  title: Warmhouse Device Service API
+  description: |
+    REST API of the **Device Service** in the Warmhouse ecosystem.
+    Used for synchronous interaction: other services (via the API Gateway)
+    need an immediate response when querying a device, its state, or sending a command.
+
+    Sending a command to a device is performed asynchronously through the event bus
+    (Command and Event Bus), so the command endpoint returns `202 Accepted` —
+    the command is accepted for processing, and the confirmed state arrives later
+    via the `device.state.changed` event (see the AsyncAPI specification).
+  version: 1.0.0
+
+servers:
+  - url: https://api.warmhouse.example/api/v1
+    description: Production
+  - url: http://localhost:8080/api/v1
+    description: Local
+
+tags:
+  - name: Devices
+    description: Device registry, state, and commands
+
+paths:
+  /devices:
+    get:
+      tags: [Devices]
+      summary: List devices
+      description: Returns a list of devices filtered by house, type, and status.
+      operationId: listDevices
+      parameters:
+        - name: houseId
+          in: query
+          description: Filter by house identifier
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Filter by device status
+          schema:
+            $ref: "#/components/schemas/DeviceStatus"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: List of devices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Device"
+                  total:
+                    type: integer
+                    example: 42
+              examples:
+                default:
+                  value:
+                    total: 2
+                    items:
+                      - id: "6f1c2d3e"
+                        type_id: "11111111"
+                        house_id: "22222222"
+                        module_id: "33333333"
+                        serial_number: "TH-000123"
+                        name: "Living Room Thermostat"
+                        status: "online"
+                        registered_at: "2026-05-01T10:15:00Z"
+                      - id: "7a2b3c4d"
+                        type_id: "44444444"
+                        house_id: "22222222"
+                        module_id: "33333333"
+                        serial_number: "LT-000777"
+                        name: "Kitchen Light"
+                        status: "offline"
+                        registered_at: "2026-05-02T09:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      tags: [Devices]
+      summary: Register a device (self-service)
+      description: |
+        Registers a new user device in the system and binds it to a house and module.
+        Implements the self-service device onboarding business goal.
+      operationId: registerDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceCreate"
+            examples:
+              default:
+                value:
+                  type_id: "11111111"
+                  house_id: "22222222"
+                  module_id: "33333333"
+                  serial_number: "TH-000123"
+                  name: "Living Room Thermostat"
+      responses:
+        "201":
+          description: Device registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+              examples:
+                default:
+                  value:
+                    id: "6f1c2d3e"
+                    type_id: "11111111"
+                    house_id: "22222222"
+                    module_id: "33333333"
+                    serial_number: "TH-000123"
+                    name: "Living Room Thermostat"
+                    status: "registered"
+                    registered_at: "2026-07-04T20:00:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /devices/{deviceId}:
+    parameters:
+      - $ref: "#/components/parameters/DeviceId"
+    get:
+      tags: [Devices]
+      summary: Get device information
+      operationId: getDevice
+      responses:
+        "200":
+          description: Device data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+              examples:
+                default:
+                  value:
+                    id: "6f1c2d3e"
+                    type_id: "11111111"
+                    house_id: "22222222"
+                    module_id: "33333333"
+                    serial_number: "TH-000123"
+                    name: "Living Room Thermostat"
+                    status: "online"
+                    registered_at: "2026-05-01T10:15:00Z"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /devices/{deviceId}/state:
+    parameters:
+      - $ref: "#/components/parameters/DeviceId"
+    patch:
+      tags: [Devices]
+      summary: Update device state
+      description: |
+        Updates the device status. Used, for example, by the Telemetry Service
+        when it receives a confirmed state from the Device Gateway.
+      operationId: updateDeviceState
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceStateUpdate"
+            examples:
+              default:
+                value:
+                  status: "offline"
+      responses:
+        "200":
+          description: State updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Device"
+              examples:
+                default:
+                  value:
+                    id: "6f1c2d3e"
+                    type_id: "11111111"
+                    house_id: "22222222"
+                    module_id: "33333333"
+                    serial_number: "TH-000123"
+                    name: "Living Room Thermostat"
+                    status: "offline"
+                    registered_at: "2026-05-01T10:15:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /devices/{deviceId}/commands:
+    parameters:
+      - $ref: "#/components/parameters/DeviceId"
+    post:
+      tags: [Devices]
+      summary: Send a command to a device
+      description: |
+        Accepts a command for the device and publishes a `device.command` event
+        to the bus. The command is processed asynchronously, so `202 Accepted`
+        is returned with a command identifier for tracking.
+      operationId: sendDeviceCommand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Command"
+            examples:
+              turnOn:
+                summary: Turn the device on
+                value:
+                  command: "turn_on"
+                  payload:
+                    target_temp: 22.5
+      responses:
+        "202":
+          description: Command accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommandAccepted"
+              examples:
+                default:
+                  value:
+                    command_id: "c0ffee00"
+                    device_id: "6f1c2d3e"
+                    command: "turn_on"
+                    status: "accepted"
+                    accepted_at: "2026-07-04T20:05:00Z"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  parameters:
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      description: Device identifier
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            default:
+              value:
+                code: "validation_error"
+                message: "Field serial_number is required"
+    NotFound:
+      description: Device not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            default:
+              value:
+                code: "device_not_found"
+                message: "Device 6f1c2d3 not found"
+    Conflict:
+      description: A device with this serial number is already registered
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            default:
+              value:
+                code: "device_already_exists"
+                message: "Device with serial_number TH-000123 already registered"
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            default:
+              value:
+                code: "internal_error"
+                message: "Unexpected server error"
+
+  schemas:
+    DeviceStatus:
+      type: string
+      description: Current device status
+      enum: [registered, online, offline, error]
+
+    Device:
+      type: object
+      required: [id, type_id, house_id, serial_number, name, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type_id:
+          type: string
+          format: uuid
+          description: Device type (FK to DeviceType)
+        house_id:
+          type: string
+          format: uuid
+          description: Owning house (FK to House)
+        module_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Control module (FK to Module)
+        serial_number:
+          type: string
+          example: "TH-000123"
+        name:
+          type: string
+          example: "Living Room Thermostat"
+        status:
+          $ref: "#/components/schemas/DeviceStatus"
+        registered_at:
+          type: string
+          format: date-time
+
+    DeviceCreate:
+      type: object
+      required: [type_id, house_id, serial_number, name]
+      properties:
+        type_id:
+          type: string
+          format: uuid
+        house_id:
+          type: string
+          format: uuid
+        module_id:
+          type: string
+          format: uuid
+        serial_number:
+          type: string
+        name:
+          type: string
+
+    DeviceStateUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: "#/components/schemas/DeviceStatus"
+
+    Command:
+      type: object
+      required: [command]
+      properties:
+        command:
+          type: string
+          description: Command name
+          example: "turn_on"
+          enum: [turn_on, turn_off, set_target_temp, open, close]
+        payload:
+          type: object
+          description: Additional command parameters
+          additionalProperties: true
+          example:
+            target_temp: 22.5
+
+    CommandAccepted:
+      type: object
+      properties:
+        command_id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+          format: uuid
+        command:
+          type: string
+        status:
+          type: string
+          enum: [accepted]
+        accepted_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+        message:
+          type: string
+          description: Human-readable description
