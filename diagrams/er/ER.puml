@@ -1,0 +1,81 @@
+@startuml
+title Warmhouse - ER-диаграмма (To-Be)
+
+hide circle
+skinparam linetype ortho
+skinparam defaultFontSize 13
+skinparam entity {
+  BackgroundColor #F5F5F5
+  BorderColor #555555
+}
+
+entity "User\n(Пользователь)" as User {
+  * id : UUID <<PK>>
+  --
+  * email : VARCHAR(255)
+  * password_hash : VARCHAR(255)
+  * full_name : VARCHAR(255)
+  * phone : VARCHAR(50)
+  * status : VARCHAR(20)
+  created_at : TIMESTAMPTZ
+}
+
+entity "House\n(Дом)" as House {
+  * id : UUID <<PK>>
+  --
+  * owner_id : UUID <<FK>>
+  * address : TEXT
+  * name : VARCHAR(255)
+  created_at : TIMESTAMPTZ
+}
+
+entity "Module\n(Модуль)" as Module {
+  * id : UUID <<PK>>
+  --
+  * house_id : UUID <<FK>>
+  * name : VARCHAR(255)
+  * category : VARCHAR(50)
+  * status : VARCHAR(20)
+  installed_at : TIMESTAMPTZ
+}
+
+entity "DeviceType\n(Тип устройства)" as DeviceType {
+  * id : UUID <<PK>>
+  --
+  * name : VARCHAR(100)
+  * category : VARCHAR(50)
+  * protocol : VARCHAR(50)
+  description : TEXT
+}
+
+entity "Device\n(Устройство)" as Device {
+  * id : UUID <<PK>>
+  --
+  * type_id : UUID <<FK>>
+  * house_id : UUID <<FK>>
+  * module_id : UUID <<FK>>
+  * serial_number : VARCHAR(100)
+  * name : VARCHAR(255)
+  * status : VARCHAR(20)
+  registered_at : TIMESTAMPTZ
+}
+
+entity "TelemetryData\n(Телеметрия)" as TelemetryData {
+  * id : UUID <<PK>>
+  --
+  * device_id : UUID <<FK>>
+  * metric : VARCHAR(100)
+  * value : DOUBLE
+  * unit : VARCHAR(20)
+  * recorded_at : TIMESTAMPTZ
+}
+
+' Связи
+User ||--o{ House : "владеет"
+House ||--o{ Module : "содержит"
+House ||--o{ Device : "содержит"
+Module ||--o{ Device : "управляет"
+DeviceType ||--o{ Device : "определяет тип"
+Device ||--o{ TelemetryData : "генерирует"
+
+@enduml

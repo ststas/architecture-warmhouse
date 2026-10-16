@@ -1,0 +1,48 @@
+@startuml
+title Warmhouse Heating Command Sequence Diagram
+
+!define RELATIVE_INCLUDE .
+!include ../../C4_Sequence.puml
+
+!define ASIS_COLOR #FFF2CC
+!define TOBE_COLOR #D5E8D4
+!define INFRA_COLOR #DAE8FC
+!define DATA_COLOR #E1D5E7
+
+AddElementTag("infra", $bgColor=INFRA_COLOR, $fontColor="#000000", $borderColor="#6C8EBF", $legendText="Infrastructure")
+AddElementTag("data", $bgColor=DATA_COLOR, $fontColor="#000000", $borderColor="#9673A6", $legendText="Data store")
+AddElementTag("asis", $bgColor=ASIS_COLOR, $fontColor="#000000", $borderColor="#C9B458", $legendText="Migrate from monolith")
+AddElementTag("tobe", $bgColor=TOBE_COLOR, $fontColor="#000000", $borderColor="#82B366", $legendText="New features")
+
+Person(user, "Пользователь", "Владелец умного дома")
+Container(webApp, "Web UI", "Web", "Самообслуживание", $tags="infra")
+Container(apiGateway, "API Gateway", "HTTP API", "Единая точка входа", $tags="infra")
+Container(heatingService, "Heating Service", "Go", "Эталон для Lighting / Gate / Video", $tags="asis")
+ContainerQueue(commandEventBus, "Command and Event Bus", "Events", "Команды и события", $tags="infra")
+Container(deviceGateway, "Device Gateway", "MQTT/HTTP", "Интеграция устройств партнёров", $tags="tobe")
+System_Ext(heatingDevice, "Оборудование отопления", "Датчик / реле отопления")
+Container(telemetryService, "Telemetry Service", "Go", "Приём и хранение показаний", $tags="asis")
+ContainerDb(telemetryDb, "Telemetry Storage", "Time-series DB", "История показаний", $tags="data")
+
+Rel(user, webApp, "Включить отопление")
+Rel(webApp, apiGateway, "POST /devices/{deviceId}/commands", "HTTPS")
+Rel(apiGateway, heatingService, "Передать команду устройству")
+Rel(heatingService, heatingService, "Проверить правила и доступность")
+Rel(heatingService, heatingService, "Пометить ожидаемое состояние")
+Rel(heatingService, commandEventBus, "Опубликовать событие DeviceCommand")
+Rel(heatingService, apiGateway, "Команда принята")
+Rel(apiGateway, webApp, "Команда принята")
+Rel(webApp, user, "Показать статус обработки команды")
+
+Rel(commandEventBus, deviceGateway, "Отправить команду")
+Rel(deviceGateway, heatingDevice, "Выполнить команду")
+Rel(heatingDevice, deviceGateway, "Подтвердить состояние")
+Rel(deviceGateway, commandEventBus, "Опубликовать событие DeviceStateChanged")
+Rel(commandEventBus, telemetryService, "Доставить событие DeviceStateChanged")
+Rel(telemetryService, telemetryDb, "Сохранить состояние и время события")
+Rel(commandEventBus, heatingService, "Доставить событие DeviceStateChanged")
+Rel(heatingService, heatingService, "Обновить подтверждённое состояние")
+
+SHOW_LEGEND()
+
+@enduml

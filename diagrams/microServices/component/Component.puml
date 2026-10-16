@@ -1,0 +1,103 @@
+@startuml
+title Warmhouse Key Services Component Diagram
+
+top to bottom direction
+
+!define RELATIVE_INCLUDE .
+!include ../../C4_Component.puml
+
+!define ASIS_COLOR #FFF2CC
+!define TOBE_COLOR #D5E8D4
+!define INFRA_COLOR #DAE8FC
+!define DATA_COLOR #E1D5E7
+
+AddContainerTag("infra", $bgColor=INFRA_COLOR, $fontColor="#000000", $borderColor="#6C8EBF", $legendText="Infrastructure")
+AddContainerTag("data", $bgColor=DATA_COLOR, $fontColor="#000000", $borderColor="#9673A6", $legendText="Data store")
+AddComponentTag("asis", $bgColor=ASIS_COLOR, $fontColor="#000000", $borderColor="#C9B458", $legendText="Migrate from monolith")
+AddComponentTag("tobe", $bgColor=TOBE_COLOR, $fontColor="#000000", $borderColor="#82B366", $legendText="New features")
+
+Container(apiGateway, "API Gateway", "HTTP API", "Маршрутизирует запросы клиентов", "", "infra")
+
+Container_Boundary(servicesAndDB, "Сервисы и БД"){
+  Container_Boundary(deviceAndDB, "Device service + DB"){
+    Container_Boundary(deviceService, "Device Service") {
+      Component(deviceApi, "Device API", "", "Регистрация и управление устройствами", "", "tobe")
+      Component(deviceRegistry, "Device Registry", "", "Каталог устройств и привязка к дому", "", "asis")
+      Component(onboardingManager, "Onboarding Manager", "", "Self-service подключение устройств", "", "tobe")
+    }
+    ContainerDb(deviceDb, "Device DB", "PostgreSQL", "Каталог и привязка устройств", "", "data")
+  }
+
+  Container_Boundary(telemetryAndDB, "Telemetry service + DB"){
+    Container_Boundary(telemetryService, "Telemetry Service") {
+      Component(telemetryIngestion, "Telemetry Ingestion", "", "Приём показаний и состояний", "", "asis")
+      Component(telemetryStorage, "Telemetry Storage Adapter", "", "Сохранение истории показаний", "", "asis")
+      Component(telemetryQueryApi, "Telemetry Query API", "", "Выдача текущих и исторических данных", "", "asis")
+    }
+    ContainerDb(telemetryDb, "Telemetry Storage", "Time-series DB", "История показаний", "", "data")
+  }
+
+  Container_Boundary(heatingAndDB, "Heating service + DB"){
+    Container_Boundary(heatingService, "Heating Service — эталон для Lighting / Gate / Video") {
+      Component(controlApi, "Control API", "", "Команды отопления", "", "asis")
+      Component(controlPolicy, "Control Policy", "", "Проверка прав доступа и допустимости команды", "", "asis")
+      Component(commandPublisher, "Command Publisher", "", "Публикация команд в шину", "", "asis")
+      Component(controlState, "Control State Manager", "", "Текущее состояние отопления", "", "asis")
+    }
+    ContainerDb(heatingDb, "Heating DB", "PostgreSQL", "Состояние и команды отопления", "", "data")
+  }
+  Container_Boundary(scenarioAndDB, "Scenario service + DB"){
+    Container_Boundary(scenarioService, "Scenario Service") {
+      Component(scenarioApi, "Scenario API", "", "Создание и редактирование сценариев", "", "tobe")
+      Component(ruleEngine, "Rule Engine", "", "Проверка условий и запуск действий", "", "tobe")
+      Component(eventHandler, "Event Handler", "", "Обработка событий телеметрии и устройств", "", "tobe")
+    }
+    ContainerDb(automationDb, "Automation DB", "PostgreSQL", "Сценарии и правила", "", "data")
+  }
+}
+
+ContainerQueue(commandEventBus, "Command and Event Bus", "Events", "Команды, события устройств, телеметрия", "", "infra")
+Container(deviceGateway, "Device Gateway / Partner Integration", "MQTT/HTTP", "Интеграция устройств партнёров", "", "tobe")
+
+commandEventBus -[hidden]left-> deviceGateway
+
+Rel(apiGateway, deviceApi, "Устройства")
+Rel(apiGateway, telemetryQueryApi, "Телеметрия")
+Rel(apiGateway, controlApi, "Команды отопления")
+Rel(apiGateway, scenarioApi, "Сценарии")
+
+Rel(deviceApi, deviceRegistry, "Читает и обновляет")
+Rel(deviceApi, onboardingManager, "Запускает подключение")
+Rel(onboardingManager, deviceRegistry, "Регистрирует устройство")
+Rel(deviceRegistry, deviceDb, "Читает и пишет")
+
+
+Rel(telemetryIngestion, telemetryStorage, "Сохраняет показания")
+Rel(telemetryStorage, telemetryDb, "Читает и пишет")
+Rel(telemetryQueryApi, telemetryStorage, "Читает данные")
+
+Rel(controlApi, controlPolicy, "Проверяет команду")
+Rel(controlPolicy, deviceService, "Проверяет устройство и привязку")
+Rel(controlPolicy, commandPublisher, "Формирует команду")
+Rel(controlState, heatingDb, "Читает и пишет")
+Rel(commandPublisher, controlState, "Обновляет ожидаемое состояние")
+Rel(commandPublisher, commandEventBus, "Публикует команды")
+
+Rel(commandEventBus, deviceGateway, "Доставляет команды")
+Rel(commandEventBus, telemetryIngestion, "Доставляет события устройств")
+Rel(commandEventBus, eventHandler, "Доставляет события")
+Rel(commandEventBus, controlState, "Доставляет подтверждённые состояния")
+
+
+Rel(eventHandler, ruleEngine, "Проверяет сценарии")
+Rel(scenarioApi, ruleEngine, "Управляет правилами")
+Rel(scenarioApi, automationDb, "Читает и пишет")
+
+Rel(ruleEngine, heatingService, "Инициирует команды управления")
+Rel(ruleEngine, automationDb, "Читает правила")
+
+Rel(deviceGateway, commandEventBus, "Публикует состояния и телеметрию")
+
+SHOW_LEGEND()
+
+@enduml

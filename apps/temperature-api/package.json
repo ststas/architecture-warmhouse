@@ -1,0 +1,13 @@
+{
+  "name": "temperature-api",
+  "version": "1.0.0",
+  "description": "Mock remote temperature sensor for the Warmhouse smart home system",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
